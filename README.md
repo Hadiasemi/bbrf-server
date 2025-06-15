@@ -31,6 +31,7 @@ Create a `.env` file in the root of the project:
 # .env
 BBRF_USER=yourusername
 BBRF_PASS=yourpassword
+JWT_SECRET=yourjwttoken
 POSTGRES_HOST=db
 POSTGRES_PORT=5432
 POSTGRES_DB=subdomains_db

@@ -64,7 +64,7 @@ func main() {
 	methodsOk := handlers.AllowedMethods([]string{"GET", "POST"})
 
 	fmt.Println("[+] API server running with TLS on :8443")
-	http.ListenAndServeTLS(":8443", "cert.pem", "key.pem", handlers.CORS(originsOk, headersOk, methodsOk)(r))
+	log.Fatal(http.ListenAndServeTLS("0.0.0.0:8443", "cert.pem", "key.pem", handlers.CORS(originsOk, headersOk, methodsOk)(r)))
 }
 
 func connectDB() *sql.DB {

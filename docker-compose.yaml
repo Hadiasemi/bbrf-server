@@ -10,7 +10,6 @@ services:
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - bbrf_net
-
   bbrf_server:
     build:
       context: .
@@ -22,11 +21,7 @@ services:
       - .env
     depends_on:
       - db
-    volumes:
-      - .:/app
     networks:
       - bbrf_net
-
 networks:
   bbrf_net:
-

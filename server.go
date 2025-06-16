@@ -58,6 +58,11 @@ func main() {
 	r.HandleFunc("/api/asn/add", Authenticate(HandleASNs)).Methods("POST")
 	r.HandleFunc("/api/asn/list", Authenticate(ListASNs)).Methods("GET")
 	r.HandleFunc("/api/company/list", Authenticate(ListCompanies)).Methods("GET")
+	r.HandleFunc("/api/domains/remove", Authenticate(RemoveDomains)).Methods("POST")
+    r.HandleFunc("/api/ip/remove", Authenticate(RemoveIPs)).Methods("POST")
+    r.HandleFunc("/api/asn/remove", Authenticate(RemoveASNs)).Methods("POST")
+    r.HandleFunc("/api/scope/remove", Authenticate(RemoveScope)).Methods("POST")
+
 
 	headersOk := handlers.AllowedHeaders([]string{"Authorization", "Content-Type"})
 	originsOk := handlers.AllowedOrigins([]string{"*"})
@@ -575,3 +580,100 @@ func ListIPs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
+
+func RemoveScope(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Company string `json:"company"`
+		Domains string `json:"domains"` // Already plain space-separated string
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid input", http.StatusBadRequest)
+		return
+	}
+
+	var companyID int
+	if err := db.QueryRow("SELECT id FROM companies WHERE name = $1", req.Company).Scan(&companyID); err != nil {
+		http.Error(w, "Company not found", http.StatusNotFound)
+		return
+	}
+
+	domains := strings.Fields(req.Domains)
+	for _, domain := range domains {
+		_, _ = db.Exec("DELETE FROM scope_domains WHERE company_id = $1 AND domain = $2", companyID, domain)
+	}
+
+	w.Write([]byte("Scope entries removed."))
+}
+func RemoveDomains(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Company string `json:"company"`
+		Domains string `json:"domains"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid input", http.StatusBadRequest)
+		return
+	}
+
+	var companyID int
+	if err := db.QueryRow("SELECT id FROM companies WHERE name = $1", req.Company).Scan(&companyID); err != nil {
+		http.Error(w, "Company not found", http.StatusNotFound)
+		return
+	}
+
+	domains := strings.Fields(req.Domains)
+	for _, domain := range domains {
+		_, _ = db.Exec("DELETE FROM subdomains WHERE company_id = $1 AND subdomain = $2", companyID, domain)
+	}
+
+	w.Write([]byte("Domains removed."))
+}
+
+func RemoveIPs(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Company string `json:"company"`
+		IPs     string `json:"ips"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid input", http.StatusBadRequest)
+		return
+	}
+
+	var companyID int
+	if err := db.QueryRow("SELECT id FROM companies WHERE name = $1", req.Company).Scan(&companyID); err != nil {
+		http.Error(w, "Company not found", http.StatusNotFound)
+		return
+	}
+
+	ips := strings.Fields(req.IPs)
+	for _, ip := range ips {
+		_, _ = db.Exec("DELETE FROM ips WHERE company_id = $1 AND address = $2", companyID, ip)
+	}
+
+	w.Write([]byte("IPs removed."))
+}
+
+func RemoveASNs(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Company string `json:"company"`
+		ASNs    string `json:"asns"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid input", http.StatusBadRequest)
+		return
+	}
+
+	var companyID int
+	if err := db.QueryRow("SELECT id FROM companies WHERE name = $1", req.Company).Scan(&companyID); err != nil {
+		http.Error(w, "Company not found", http.StatusNotFound)
+		return
+	}
+
+	asns := strings.Fields(req.ASNs)
+	for _, asn := range asns {
+		_, _ = db.Exec("DELETE FROM asns WHERE company_id = $1 AND asn = $2", companyID, asn)
+	}
+
+	w.Write([]byte("ASNs removed."))
+}
+
+

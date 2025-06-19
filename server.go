@@ -55,14 +55,15 @@ func main() {
 	r.HandleFunc("/api/scope/show", Authenticate(ShowScope)).Methods("GET")
 	r.HandleFunc("/api/ip", Authenticate(HandleIPs)).Methods("POST")
 	r.HandleFunc("/api/ip/list", Authenticate(ListIPs)).Methods("GET")
+	r.HandleFunc("/api/ip/count", Authenticate(CountIPs)).Methods("GET")
 	r.HandleFunc("/api/asn/add", Authenticate(HandleASNs)).Methods("POST")
 	r.HandleFunc("/api/asn/list", Authenticate(ListASNs)).Methods("GET")
+	r.HandleFunc("/api/asn/count", Authenticate(CountASNs)).Methods("GET")
 	r.HandleFunc("/api/company/list", Authenticate(ListCompanies)).Methods("GET")
 	r.HandleFunc("/api/domains/remove", Authenticate(RemoveDomains)).Methods("POST")
     r.HandleFunc("/api/ip/remove", Authenticate(RemoveIPs)).Methods("POST")
     r.HandleFunc("/api/asn/remove", Authenticate(RemoveASNs)).Methods("POST")
     r.HandleFunc("/api/scope/remove", Authenticate(RemoveScope)).Methods("POST")
-
 
 	headersOk := handlers.AllowedHeaders([]string{"Authorization", "Content-Type"})
 	originsOk := handlers.AllowedOrigins([]string{"*"})
@@ -179,36 +180,6 @@ func AddCompany(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Company '%s' added.", req.Company)
 }
 
-// func HandleDomains(w http.ResponseWriter, r *http.Request) {
-// 	company := r.URL.Query().Get("company")
-// 	if company == "" {
-// 		http.Error(w, "Missing company", http.StatusBadRequest)
-// 		return
-// 	}
-//
-// 	var companyID int
-// 	err := db.QueryRow("SELECT id FROM companies WHERE name = $1", company).Scan(&companyID)
-// 	if err != nil {
-// 		http.Error(w, "Company not found", http.StatusNotFound)
-// 		return
-// 	}
-//
-// 	rows, err := db.Query("SELECT subdomain FROM subdomains WHERE company_id = $1", companyID)
-// 	if err != nil {
-// 		http.Error(w, "Failed to query domains", http.StatusInternalServerError)
-// 		return
-// 	}
-// 	defer rows.Close()
-//
-// 	w.Header().Set("Content-Type", "text/plain")
-// 	for rows.Next() {
-// 		var domain string
-// 		if err := rows.Scan(&domain); err == nil {
-// 			fmt.Fprintln(w, domain)
-// 		}
-// 	}
-// }
-
 func AddDomains(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Company string `json:"company"`
@@ -239,6 +210,44 @@ func CountDomains(w http.ResponseWriter, r *http.Request) {
 	}
 	var count int
 	db.QueryRow("SELECT COUNT(*) FROM subdomains WHERE company_id = $1", companyID).Scan(&count)
+	fmt.Fprintf(w, "%d", count)
+}
+
+func CountIPs(w http.ResponseWriter, r *http.Request) {
+	company := r.URL.Query().Get("company")
+	if company == "" {
+		http.Error(w, "Missing company", http.StatusBadRequest)
+		return
+	}
+	
+	var companyID int
+	err := db.QueryRow("SELECT id FROM companies WHERE name = $1", company).Scan(&companyID)
+	if err != nil {
+		http.Error(w, "Company not found", http.StatusNotFound)
+		return
+	}
+	
+	var count int
+	db.QueryRow("SELECT COUNT(*) FROM ips WHERE company_id = $1", companyID).Scan(&count)
+	fmt.Fprintf(w, "%d", count)
+}
+
+func CountASNs(w http.ResponseWriter, r *http.Request) {
+	company := r.URL.Query().Get("company")
+	if company == "" {
+		http.Error(w, "Missing company", http.StatusBadRequest)
+		return
+	}
+	
+	var companyID int
+	err := db.QueryRow("SELECT id FROM companies WHERE name = $1", company).Scan(&companyID)
+	if err != nil {
+		http.Error(w, "Company not found", http.StatusNotFound)
+		return
+	}
+	
+	var count int
+	db.QueryRow("SELECT COUNT(*) FROM asns WHERE company_id = $1", companyID).Scan(&count)
 	fmt.Fprintf(w, "%d", count)
 }
 
@@ -323,7 +332,6 @@ func HandleIPs(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("IPs added."))
 }
 
-// Re-add ShowScope handler that was previously removed or not copied over
 func ShowScope(w http.ResponseWriter, r *http.Request) {
 	company := r.URL.Query().Get("company")
 	scopeType := r.URL.Query().Get("type") // must be "in" or "out"
@@ -356,36 +364,6 @@ func ShowScope(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// func ListASNs(w http.ResponseWriter, r *http.Request) {
-// 	company := r.URL.Query().Get("company")
-// 	if company == "" {
-// 		http.Error(w, "Missing company", http.StatusBadRequest)
-// 		return
-// 	}
-//
-// 	var companyID int
-// 	err := db.QueryRow("SELECT id FROM companies WHERE name = $1", company).Scan(&companyID)
-// 	if err != nil {
-// 		http.Error(w, "Company not found", http.StatusNotFound)
-// 		return
-// 	}
-//
-// 	rows, err := db.Query("SELECT asn FROM asns WHERE company_id = $1", companyID)
-// 	if err != nil {
-// 		http.Error(w, "Failed to query ASNs", http.StatusInternalServerError)
-// 		return
-// 	}
-// 	defer rows.Close()
-//
-// 	w.Header().Set("Content-Type", "text/plain")
-// 	for rows.Next() {
-// 		var asn string
-// 		if err := rows.Scan(&asn); err == nil {
-// 			fmt.Fprintln(w, asn)
-// 		}
-// 	}
-// }
-
 func HandleASNs(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Company string `json:"company"`
@@ -412,35 +390,6 @@ func HandleASNs(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("ASNs added."))
 }
 
-//	func ListIPs(w http.ResponseWriter, r *http.Request) {
-//		company := r.URL.Query().Get("company")
-//		if company == "" {
-//			http.Error(w, "Missing company", http.StatusBadRequest)
-//			return
-//		}
-//
-//		var companyID int
-//		err := db.QueryRow("SELECT id FROM companies WHERE name = $1", company).Scan(&companyID)
-//		if err != nil {
-//			http.Error(w, "Company not found", http.StatusNotFound)
-//			return
-//		}
-//
-//		rows, err := db.Query("SELECT address FROM ips WHERE company_id = $1", companyID)
-//		if err != nil {
-//			http.Error(w, "Failed to query IPs", http.StatusInternalServerError)
-//			return
-//		}
-//		defer rows.Close()
-//
-//		w.Header().Set("Content-Type", "text/plain")
-//		for rows.Next() {
-//			var ip string
-//			if err := rows.Scan(&ip); err == nil {
-//				fmt.Fprintln(w, ip)
-//			}
-//		}
-//	}
 func ListCompanies(w http.ResponseWriter, r *http.Request) {
 	rows, err := db.Query("SELECT name FROM companies")
 	if err != nil {
@@ -604,6 +553,7 @@ func RemoveScope(w http.ResponseWriter, r *http.Request) {
 
 	w.Write([]byte("Scope entries removed."))
 }
+
 func RemoveDomains(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Company string `json:"company"`
@@ -675,5 +625,3 @@ func RemoveASNs(w http.ResponseWriter, r *http.Request) {
 
 	w.Write([]byte("ASNs removed."))
 }
-
-

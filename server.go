@@ -31,6 +31,7 @@ type Claims struct {
 var jwtKey []byte
 var db *sql.DB
 
+
 func main() {
 	godotenv.Load()
 
@@ -39,13 +40,14 @@ func main() {
 		log.Fatal("JWT_SECRET not set in environment")
 	}
 	jwtKey = []byte(secret)
-	
+
 	db = connectDB()
 	defer db.Close()
 
 	r := mux.NewRouter()
 	r.HandleFunc("/login", Login).Methods("POST")
 	r.HandleFunc("/api/company", Authenticate(AddCompany)).Methods("POST")
+	r.HandleFunc("/api/company/remove", Authenticate(RemoveCompany)).Methods("POST")
 	r.HandleFunc("/api/domains", Authenticate(HandleDomains)).Methods("GET")
 	r.HandleFunc("/api/domains/add", Authenticate(AddDomains)).Methods("POST")
 	r.HandleFunc("/api/domains/count", Authenticate(CountDomains)).Methods("GET")
@@ -59,19 +61,22 @@ func main() {
 	r.HandleFunc("/api/asn/add", Authenticate(HandleASNs)).Methods("POST")
 	r.HandleFunc("/api/asn/list", Authenticate(ListASNs)).Methods("GET")
 	r.HandleFunc("/api/asn/count", Authenticate(CountASNs)).Methods("GET")
+	r.HandleFunc("/api/asn/remove", Authenticate(RemoveASNs)).Methods("POST") // ADD THIS LINE
 	r.HandleFunc("/api/company/list", Authenticate(ListCompanies)).Methods("GET")
+
+	// You might also want to add these missing routes for domains, IPs, and scope:
 	r.HandleFunc("/api/domains/remove", Authenticate(RemoveDomains)).Methods("POST")
-    r.HandleFunc("/api/ip/remove", Authenticate(RemoveIPs)).Methods("POST")
-    r.HandleFunc("/api/asn/remove", Authenticate(RemoveASNs)).Methods("POST")
-    r.HandleFunc("/api/scope/remove", Authenticate(RemoveScope)).Methods("POST")
+	r.HandleFunc("/api/ip/remove", Authenticate(RemoveIPs)).Methods("POST")
+	r.HandleFunc("/api/scope/remove", Authenticate(RemoveScope)).Methods("POST")
 
 	headersOk := handlers.AllowedHeaders([]string{"Authorization", "Content-Type"})
 	originsOk := handlers.AllowedOrigins([]string{"*"})
-	methodsOk := handlers.AllowedMethods([]string{"GET", "POST"})
+	methodsOk := handlers.AllowedMethods([]string{"GET", "POST",})
 
 	fmt.Println("[+] API server running with TLS on :8443")
-	log.Fatal(http.ListenAndServeTLS("0.0.0.0:8443", "cert.pem", "key.pem", handlers.CORS(originsOk, headersOk, methodsOk)(r)))
+	http.ListenAndServeTLS("0.0.0.0:8443", "cert.pem", "key.pem", handlers.CORS(originsOk, headersOk, methodsOk)(r))
 }
+
 
 func connectDB() *sql.DB {
 	host := os.Getenv("POSTGRES_HOST")
@@ -529,6 +534,79 @@ func ListIPs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 }
+
+
+func RemoveCompany(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Company string `json:"company"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Company == "" {
+		http.Error(w, "Invalid input", http.StatusBadRequest)
+		return
+	}
+
+	// Check if company exists and get ID
+	var companyID int
+	err := db.QueryRow("SELECT id FROM companies WHERE name = $1", req.Company).Scan(&companyID)
+	if err != nil {
+		http.Error(w, "Company not found", http.StatusNotFound)
+		return
+	}
+
+	// Start a transaction to ensure all deletes succeed or none do
+	tx, err := db.Begin()
+	if err != nil {
+		http.Error(w, "Failed to start transaction", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback() // This will be ignored if tx.Commit() succeeds
+
+	// Delete all related data first (in order to respect foreign key constraints)
+	// Delete subdomains
+	_, err = tx.Exec("DELETE FROM subdomains WHERE company_id = $1", companyID)
+	if err != nil {
+		http.Error(w, "Failed to delete subdomains: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Delete IPs
+	_, err = tx.Exec("DELETE FROM ips WHERE company_id = $1", companyID)
+	if err != nil {
+		http.Error(w, "Failed to delete IPs: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Delete ASNs
+	_, err = tx.Exec("DELETE FROM asns WHERE company_id = $1", companyID)
+	if err != nil {
+		http.Error(w, "Failed to delete ASNs: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Delete scope domains
+	_, err = tx.Exec("DELETE FROM scope_domains WHERE company_id = $1", companyID)
+	if err != nil {
+		http.Error(w, "Failed to delete scope domains: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Finally, delete the company
+	_, err = tx.Exec("DELETE FROM companies WHERE id = $1", companyID)
+	if err != nil {
+		http.Error(w, "Failed to delete company: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Commit the transaction
+	if err = tx.Commit(); err != nil {
+		http.Error(w, "Failed to commit transaction: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "Company '%s' and all related data removed successfully.", req.Company)
+}
+
 
 func RemoveScope(w http.ResponseWriter, r *http.Request) {
 	var req struct {
